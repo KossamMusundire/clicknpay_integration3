@@ -2,7 +2,7 @@
 requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 [project]
-name = "clicknpay_integration with fiscalisation"
+name = "clicknpay_integration"
 version = "1.0.0"
 description = "Frappe integration for ClicknPay (openapi.africa)"
 readme = "README.md"
