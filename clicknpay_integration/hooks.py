@@ -5,3 +5,10 @@ app_description = "Frappe integration for ClicknPay (openapi.africa) - create or
 app_email = "support@cyteersystems.com"
 app_license = "mit"
 app_version = "1.0.0"
+
+
+doc_events = {
+    "Sales Invoice": {
+        "on_submit": "clicknpay_integration.api.create_payment_request"
+    }
+}
