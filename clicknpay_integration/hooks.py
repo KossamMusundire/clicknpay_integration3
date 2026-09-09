@@ -1,5 +1,5 @@
-app_name = "clicknpay_integration"
-app_title = "ClicknPay Integration"
+app_name = "clicknpay_integration with fiscalisation"
+app_title = "ClicknPay Integration with Fiscalisation"
 app_publisher = "Cyteer Systems"
 app_description = "Frappe integration for ClicknPay (openapi.africa) - create orders, check status, handle callbacks"
 app_email = "support@cyteersystems.com"
