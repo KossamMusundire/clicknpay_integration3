@@ -131,6 +131,21 @@ def clicknpay_callback():
                 pe.insert(ignore_permissions=True)
                 pe.submit()
         except Exception:
+
+            # ===== ADD THIS - DIRECT GUEST LINK FOR INVOICE EMAIL & PDF =====
+@frappe.whitelist(allow_guest=True)
+def pay_invoice(invoice_name=None):
+    invoice_name = invoice_name or frappe.form_dict.get("invoice_name") or frappe.form_dict.get("reference") or frappe.form_dict.get("clientReference")
+    if not invoice_name:
+        frappe.throw("Missing invoice_name")
+
+    result = initiate_payment(reference=invoice_name)
+
+    if result.get("status") == "success" and result.get("redirect_url"):
+        frappe.local.response["type"] = "redirect"
+        frappe.local.response["location"] = result["redirect_url"]
+    else:
+        frappe.throw(f"Payment init failed: {result.get('message') or result.get('raw')}")
             frappe.log_error(title="ClicknPay Callback", message=frappe.get_traceback())
     frappe.local.response["type"] = "redirect"
     frappe.local.response["location"] = f"{get_url()}/payment-success?invoice={ref}&status={status_val}"
