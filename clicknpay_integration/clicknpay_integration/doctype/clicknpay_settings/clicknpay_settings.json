@@ -5,10 +5,19 @@
   "engine": "InnoDB",
   "field_order": [
     "mode",
+    "column_break_1",
     "test_public_id",
     "live_public_id",
+    "section_break_config",
     "create_url",
-    "status_url"
+    "status_url",
+    "payment_account",
+    "section_break_status",
+    "last_order_id",
+    "last_status",
+    "last_sync_on",
+    "section_break_logs",
+    "transaction_logs"
   ],
   "fields": [
     {
@@ -20,6 +29,10 @@
       "reqd": 1
     },
     {
+      "fieldname": "column_break_1",
+      "fieldtype": "Column Break"
+    },
+    {
       "fieldname": "test_public_id",
       "fieldtype": "Data",
       "label": "Test Public Unique ID",
@@ -28,19 +41,71 @@
     {
       "fieldname": "live_public_id",
       "fieldtype": "Data",
-      "label": "Live Public Unique ID"
+      "label": "Live Public Unique ID",
+      "default": "YzJAZYDoJPmWpgZmF"
+    },
+    {
+      "fieldname": "section_break_config",
+      "fieldtype": "Section Break",
+      "label": "API Configuration"
     },
     {
       "fieldname": "create_url",
       "fieldtype": "Data",
       "label": "Create URL",
-      "default": "https://backendservices.clicknpay.africa:2081/payme/orders"
+      "default": "https://backendservices.clicknpay.africa:2081/payme/orders",
+      "reqd": 1
     },
     {
       "fieldname": "status_url",
       "fieldtype": "Data",
       "label": "Status URL",
-      "default": "https://backendservices.clicknpay.africa:2081/payme/orders/top-paid"
+      "default": "https://backendservices.clicknpay.africa:2081/payme/orders/top-paid",
+      "reqd": 1
+    },
+    {
+      "fieldname": "payment_account",
+      "fieldtype": "Link",
+      "label": "ClicknPay Bank Account",
+      "options": "Account",
+      "description": "e.g. Clicknpay - CSPL"
+    },
+    {
+      "fieldname": "section_break_status",
+      "fieldtype": "Section Break",
+      "label": "Live Status Monitor"
+    },
+    {
+      "fieldname": "last_order_id",
+      "fieldtype": "Data",
+      "label": "Last Order ID",
+      "read_only": 1
+    },
+    {
+      "fieldname": "last_status",
+      "fieldtype": "Select",
+      "label": "Last Status",
+      "options": "\nPENDING\nSUCCESS\nPAID\nFAILED\nUNKNOWN",
+      "read_only": 1,
+      "default": ""
+    },
+    {
+      "fieldname": "last_sync_on",
+      "fieldtype": "Datetime",
+      "label": "Last Sync On",
+      "read_only": 1
+    },
+    {
+      "fieldname": "section_break_logs",
+      "fieldtype": "Section Break",
+      "label": "Transaction Logs"
+    },
+    {
+      "fieldname": "transaction_logs",
+      "fieldtype": "Table",
+      "label": "Recent Payments",
+      "options": "ClicknPay Transaction Log",
+      "read_only": 1
     }
   ],
   "issingle": 1,
