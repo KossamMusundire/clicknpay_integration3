@@ -6,42 +6,38 @@ class ClicknPaySettings(Document):
         pass
     
     def validate_transaction_amount(self, currency, amount=None):
-        if amount is None: amount = currency
+        if amount is None:
+            amount = currency
         if not amount or float(amount) <= 0:
             frappe.throw("Amount must be > 0")
-    
+
     def get_payment_url(self, **kwargs):
         """
-        Called by:
-        1. CyteERP: Payment Request -> Submit
-        2. GW Keys: Payment Request for Subscription invoice
+        Handles both:
+        - CyteERP: Payment Request -> kwargs has reference_name = ACC-SINV-...
+        - GW Keys: Payment Request for Subscription invoice
         """
-        from clicknpay_integration.api import initiate_payment, get_payment_url as api_get_url
+        from clicknpay_integration.api import initiate_payment
         
-        # CyteERP: kwargs has Payment Request name
-        pr_name = kwargs.get("name")
-        ref = kwargs.get("reference_docname") or kwargs.get("reference_name")
+        pr_name = kwargs.get("name")  # This is ACC-PRQ-2026-00002
+        reference = kwargs.get("reference_docname") or kwargs.get("reference_name")
         
-        if not ref and pr_name:
+        # If reference not in kwargs, fetch from PR doc
+        if not reference and pr_name:
             try:
-                pr = frappe.get_doc("Payment Request", pr_name)
-                ref = pr.reference_name
-            except:
-                pass
-        
-        if not ref:
-            ref = kwargs.get("clientReference") or "ACC-SINV-2026-00023"
+                if frappe.db.exists("Payment Request", pr_name):
+                    pr = frappe.get_doc("Payment Request", pr_name)
+                    reference = pr.reference_name  # Should be ACC-SINV-2026-00024
+            except Exception as e:
+                frappe.log_error(f"get_payment_url fetch PR failed: {e}", "ClicknPay")
 
-        # This will create real ClicknPay order via your api.py
-        result = initiate_payment(reference=ref)
+        if not reference:
+            frappe.throw(f"Cannot resolve Sales Invoice for Payment Request {pr_name}")
+
+        # reference is now ACC-SINV-2026-00024, not ACC-PRQ-2026-00002
+        result = initiate_payment(reference=reference, payment_request=pr_name)
         
         if result.get("status") == "success":
-            url = result.get("redirect_url")
-            # Save url to PR so portal shows it
-            if pr_name:
-                frappe.db.set_value("Payment Request", pr_name, "payment_url", url)
-            return url
+            return result.get("redirect_url")
         
-        # If fails, don't 500 - fallback to guest pay link
-        frappe.log_error(f"ClicknPay failed for {ref}: {result}", "ClicknPay")
-        return f"/api/method/clicknpay_integration.api.pay_invoice?invoice_name={ref}"
+        frappe.throw(f"ClicknPay failed: {result.get('message')}")

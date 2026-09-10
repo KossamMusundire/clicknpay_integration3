@@ -61,11 +61,25 @@ def create_or_update_log(order_id, reference, amount=0, status="PENDING", payme_
 @frappe.whitelist(allow_guest=True)
 def initiate_payment(reference=None, subscription=None, email=None, phone=None, qty=1, description=None, return_url=None, currency=None, payment_request=None):
     reference = (reference or "").strip()
+    # FIX: If reference is Payment Request (ACC-PRQ-...), resolve to its Sales Invoice
+    if frappe.db.exists("Payment Request", reference):
+        _pr = frappe.get_doc("Payment Request", reference)
+        reference = _pr.reference_name
+    
     qty = cint(qty or 1) or 1
     invoice_name = reference
     site_url = get_url()
     settings = get_settings()
     pr_name = payment_request or frappe.form_dict.get("payment_request")
+    if not pr_name and frappe.db.exists("Payment Request", invoice_name):
+        pr_name = None
+    elif payment_request and frappe.db.exists("Payment Request", payment_request):
+        pr_name = payment_request
+    else:
+        # Try find PR by reference invoice
+        existing_pr = frappe.get_all("Payment Request", filters={"reference_name": invoice_name, "docstatus": ["<", 2]}, limit=1)
+        if existing_pr and not pr_name:
+            pr_name = existing_pr[0].name
 
     if frappe.db.exists("Subscription", reference):
         outs = frappe.get_all("Sales Invoice", filters={"subscription": reference, "docstatus": 1, "outstanding_amount": [">", 0]}, limit=1, order_by="creation desc")
