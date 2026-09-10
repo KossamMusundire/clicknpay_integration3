@@ -1,0 +1,70 @@
+{
+  "allow_rename": 0,
+  "creation": "2026-09-10 00:00:00",
+  "doctype": "DocType",
+  "engine": "InnoDB",
+  "field_order": [
+    "order_id",
+    "reference",
+    "amount",
+    "status",
+    "payme_url",
+    "payment_entry",
+    "creation_time"
+  ],
+  "fields": [
+    {
+      "fieldname": "order_id",
+      "fieldtype": "Data",
+      "label": "Order ID"
+    },
+    {
+      "fieldname": "reference",
+      "fieldtype": "Data",
+      "label": "Invoice / Ref",
+      "in_list_view": 1
+    },
+    {
+      "fieldname": "amount",
+      "fieldtype": "Currency",
+      "label": "Amount",
+      "in_list_view": 1
+    },
+    {
+      "fieldname": "status",
+      "fieldtype": "Select",
+      "label": "Status",
+      "options": "PENDING\nSUCCESS\nPAID\nFAILED",
+      "default": "PENDING",
+      "in_list_view": 1
+    },
+    {
+      "fieldname": "payme_url",
+      "fieldtype": "Data",
+      "label": "Pay Link"
+    },
+    {
+      "fieldname": "payment_entry",
+      "fieldtype": "Link",
+      "label": "Payment Entry",
+      "options": "Payment Entry"
+    },
+    {
+      "fieldname": "creation_time",
+      "fieldtype": "Datetime",
+      "label": "Time"
+    }
+  ],
+  "istable": 1,
+  "module": "ClicknPay Integration",
+  "name": "ClicknPay Transaction Log",
+  "permissions": [
+    {
+      "role": "System Manager",
+      "read": 1,
+      "write": 1,
+      "create": 1,
+      "delete": 1
+    }
+  ]
+}

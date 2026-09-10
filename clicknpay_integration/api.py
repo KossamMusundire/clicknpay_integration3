@@ -1,6 +1,7 @@
 import frappe
 import requests
 from frappe.utils import today, get_url, cint
+import json
 
 CREATE_URL = "https://backendservices.clicknpay.africa:2081/payme/orders"
 STATUS_URL = "https://backendservices.clicknpay.africa:2081/payme/orders/top-paid"
@@ -21,20 +22,53 @@ def get_settings():
         "status_url": frappe.conf.get("clicknpay_status_url") or STATUS_URL,
     }
 
-# --- Core Order Creation ---
+def create_or_update_log(order_id, reference, amount=0, status="PENDING", payme_url=None, raw=None, payment_entry=None, pr_name=None, source="CyteERP Portal", customer=None, email=None):
+    try:
+        if not order_id:
+            order_id = reference
+        # Try get existing
+        if frappe.db.exists("ClicknPay Transaction Log", order_id):
+            doc = frappe.get_doc("ClicknPay Transaction Log", order_id)
+            doc.status = status
+            if payme_url: doc.payme_url = payme_url
+            if payment_entry: doc.payment_entry = payment_entry
+            if raw: doc.raw_response = json.dumps(raw, indent=2)[:10000]
+            doc.save(ignore_permissions=True)
+            return doc
+        else:
+            doc = frappe.get_doc({
+                "doctype": "ClicknPay Transaction Log",
+                "order_id": order_id,
+                "reference": reference,
+                "status": status,
+                "amount": amount,
+                "customer": customer,
+                "customer_email": email,
+                "payme_url": payme_url or "",
+                "raw_response": json.dumps(raw, indent=2)[:10000] if raw else "",
+                "creation_time": frappe.utils.now(),
+                "payment_entry": payment_entry,
+                "payment_request": pr_name,
+                "sales_invoice": reference if frappe.db.exists("Sales Invoice", reference) else None,
+                "source_module": source
+            })
+            doc.insert(ignore_permissions=True)
+            return doc
+    except Exception as e:
+        frappe.log_error(f"Log create failed {e}", "ClicknPay Log")
+        return None
+
 @frappe.whitelist(allow_guest=True)
-def initiate_payment(reference=None, subscription=None, email=None, phone=None, qty=1, description=None, return_url=None, currency=None):
+def initiate_payment(reference=None, subscription=None, email=None, phone=None, qty=1, description=None, return_url=None, currency=None, payment_request=None):
     reference = (reference or "").strip()
     qty = cint(qty or 1) or 1
     invoice_name = reference
     site_url = get_url()
     settings = get_settings()
+    pr_name = payment_request or frappe.form_dict.get("payment_request")
 
-    # Resolve Subscription -> Latest Outstanding Invoice
     if frappe.db.exists("Subscription", reference):
-        outs = frappe.get_all("Sales Invoice",
-            filters={"subscription": reference, "docstatus": 1, "outstanding_amount": [">", 0]},
-            limit=1, order_by="creation desc")
+        outs = frappe.get_all("Sales Invoice", filters={"subscription": reference, "docstatus": 1, "outstanding_amount": [">", 0]}, limit=1, order_by="creation desc")
         if outs:
             invoice_name = outs[0].name
 
@@ -44,9 +78,9 @@ def initiate_payment(reference=None, subscription=None, email=None, phone=None, 
     inv_doc = frappe.get_doc("Sales Invoice", invoice_name)
     phone = phone or frappe.db.get_value("Customer", inv_doc.customer, "mobile_no") or "263771234567"
     curr = currency or inv_doc.currency or "USD"
+    source = "GW Keys Subscription" if frappe.db.exists("Subscription", reference) else "CyteERP Portal"
 
     if not return_url:
-        # Cyteerp portal callback
         return_url = f"{site_url}/api/method/clicknpay_integration.api.clicknpay_callback?clientReference={invoice_name}"
 
     products = [
@@ -78,17 +112,32 @@ def initiate_payment(reference=None, subscription=None, email=None, phone=None, 
         return {"status": "error", "message": str(e)}
 
     pay_url = j.get("paymeURL") or j.get("paymeUrl") or j.get("paymentUrl")
+    order_id = j.get("orderId") or j.get("order_id") or invoice_name
+
+    # HOOK 1: Create log on order creation - handles both GW Keys and CyteERP
+    create_or_update_log(
+        order_id=order_id,
+        reference=invoice_name,
+        amount=inv_doc.grand_total,
+        status="PENDING",
+        payme_url=pay_url,
+        raw=j,
+        pr_name=pr_name,
+        source=source,
+        customer=inv_doc.customer,
+        email=email
+    )
+
     if pay_url:
-        return {"status": "success", "redirect_url": pay_url, "invoice": invoice_name, "raw": j}
+        return {"status": "success", "redirect_url": pay_url, "invoice": invoice_name, "order_id": order_id, "raw": j}
     return {"status": "error", "message": j.get("message") or "No paymeURL", "raw": j}
 
-# --- For ERPNext Payment Request (Native) ---
 @frappe.whitelist(allow_guest=True)
 def get_payment_url(payment_request_name=None, reference_docname=None):
     if payment_request_name:
         pr = frappe.get_doc("Payment Request", payment_request_name)
         reference_docname = pr.reference_name
-    result = initiate_payment(reference=reference_docname)
+    result = initiate_payment(reference=reference_docname, payment_request=payment_request_name)
     if result.get("status") == "success":
         if payment_request_name:
             frappe.db.set_value("Payment Request", payment_request_name, "payment_url", result["redirect_url"])
@@ -96,7 +145,6 @@ def get_payment_url(payment_request_name=None, reference_docname=None):
         return result["redirect_url"]
     frappe.throw(f"ClicknPay failed: {result.get('message')}")
 
-# --- Guest Link for Email PDF - KEEP THIS - NO LOGIN ---
 @frappe.whitelist(allow_guest=True)
 def pay_invoice(invoice_name=None):
     invoice_name = invoice_name or frappe.form_dict.get("invoice_name") or frappe.form_dict.get("reference") or frappe.form_dict.get("clientReference")
@@ -130,6 +178,7 @@ def clicknpay_callback():
     status_data = check_status(ref)
     status_val = (status_data.get("status") or status_data.get("paymentStatus") or "UNKNOWN").upper()
 
+    pe_name = None
     if status_val in ("SUCCESS", "PAID", "COMPLETED", "APPROVED"):
         try:
             if frappe.db.exists("Sales Invoice", ref):
@@ -152,43 +201,13 @@ def clicknpay_callback():
                         pe.insert(ignore_permissions=True)
                         pe.submit()
                         frappe.db.commit()
-                        # Your marketplace ZIMRA app will auto-fiscalise on Payment Entry on_submit
-                        # If not, it will be triggered from here via fiscal_hook.py
-                        frappe.enqueue("clicknpay_integration.fiscal_hook.trigger_fiscalisation",
-                                       payment_entry_name=pe.name, invoice_name=ref, queue="short")
+                        pe_name = pe.name
+                        frappe.enqueue("clicknpay_integration.fiscal_hook.trigger_fiscalisation", payment_entry_name=pe.name, invoice_name=ref, queue="short")
         except Exception:
             frappe.log_error(title="ClicknPay Callback Error", message=frappe.get_traceback())
 
+    # HOOK 2: Update log with final status
+    create_or_update_log(order_id=ref, reference=ref, status=status_val, raw=status_data, payment_entry=pe_name)
+
     frappe.local.response["type"] = "redirect"
     frappe.local.response["location"] = f"{get_url()}/payment-success?invoice={ref}&status={status_val}"
-
-# --- Auto-create Payment Request for Cyteerp ---
-def create_payment_request(doc, method):
-    if doc.outstanding_amount <= 0:
-        return
-    try:
-        gateway_account = frappe.db.get_value("Payment Gateway Account", {"payment_gateway": "ClicknPay"}, "name")
-        if not gateway_account:
-            return
-        if frappe.db.exists("Payment Request", {"reference_name": doc.name, "docstatus": ["<", 2]}):
-            return
-        pr = frappe.get_doc({
-            "doctype": "Payment Request",
-            "payment_gateway_account": gateway_account,
-            "payment_gateway": "ClicknPay",
-            "payment_account": frappe.db.get_value("Company", doc.company, "default_bank_account"),
-            "payment_channel": "Email",
-            "grand_total": doc.outstanding_amount,
-            "currency": doc.currency,
-            "email_to": doc.contact_email or frappe.db.get_value("Customer", doc.customer, "email_id"),
-            "subject": f"Payment Request for {doc.name} - Cyteerp Systems",
-            "reference_doctype": "Sales Invoice",
-            "reference_name": doc.name,
-        })
-        pr.insert(ignore_permissions=True)
-        result = initiate_payment(reference=doc.name)
-        if result.get("status") == "success":
-            pr.db_set("payment_url", result["redirect_url"])
-        pr.submit()
-    except Exception:
-        frappe.log_error(frappe.get_traceback(), "ClicknPay Auto PR Failed")
