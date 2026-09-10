@@ -136,11 +136,11 @@ app_version = "1.0.0"
 # ---------------
 # Hook on document methods and events
 
-doc_events = {
-    "Sales Invoice": {
-        "on_submit": "clicknpay_integration.api.create_payment_request"
-    }
-}
+#doc_events = {
+ #   "Sales Invoice": {
+       # "on_submit": "clicknpay_integration.api.create_payment_request"
+   # }
+#}
 
 # Scheduled Tasks
 # ---------------
