@@ -15,9 +15,7 @@
     "section_break_status",
     "last_order_id",
     "last_status",
-    "last_sync_on",
-    "section_break_logs",
-    "transaction_logs"
+    "last_sync_on"
   ],
   "fields": [
     {
@@ -93,18 +91,6 @@
       "fieldname": "last_sync_on",
       "fieldtype": "Datetime",
       "label": "Last Sync On",
-      "read_only": 1
-    },
-    {
-      "fieldname": "section_break_logs",
-      "fieldtype": "Section Break",
-      "label": "Transaction Logs"
-    },
-    {
-      "fieldname": "transaction_logs",
-      "fieldtype": "Table",
-      "label": "Recent Payments",
-      "options": "ClicknPay Transaction Log",
       "read_only": 1
     }
   ],
