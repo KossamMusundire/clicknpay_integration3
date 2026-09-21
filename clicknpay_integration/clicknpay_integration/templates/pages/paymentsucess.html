@@ -1,0 +1,42 @@
+{% extends "templates/web.html" %}
+{% block title %}Payment Successful{% endblock %}
+{% block page_content %}
+<div style="text-align:center; padding:60px 20px; font-family:Inter,sans-serif; max-width:700px; margin:0 auto;">
+  
+  {% if status in ("SUCCESS","PAID","COMPLETED","APPROVED","TOP-PAID") %}
+    <div style="font-size:80px; margin-bottom:20px;">🎉</div>
+    <h1 style="color:#2E7D32; font-weight:800; font-size:36px; margin-bottom:10px;">WELCOME TO THE FAMILY!</h1>
+    <h2 style="color:#1b4332; font-weight:600;">Payment Successful ✅</h2>
+    
+    {% if docname %}
+    <div style="background:#f4fbf7; border:1.5px solid #c8e6c9; border-radius:16px; padding:20px; margin:25px 0;">
+      <p style="margin:5px 0;"><b>Invoice:</b> {{ docname }}</p>
+      {% if customer_name %}<p style="margin:5px 0;"><b>Customer:</b> {{ customer_name }}</p>{% endif %}
+      {% if grand_total %}<p style="margin:5px 0;"><b>Amount:</b> ${{ grand_total }} USD</p>{% endif %}
+      <p style="margin:5px 0;"><b>Status:</b> <span style="background:#2E7D32; color:#fff; padding:4px 10px; border-radius:8px; font-size:12px;">PAID</span></p>
+    </div>
+    {% endif %}
+    
+    <p style="color:#4a6b5d; font-size:16px; line-height:1.6; margin:20px 0;">
+      Thank you for choosing <b>GW Keys Locksmiths & Hardware</b>!<br>
+      Your membership is now <b>Active for 1 Year</b>. You are officially part of the GW Keys family.
+    </p>
+    
+    <div style="margin-top:30px; display:flex; gap:12px; justify-content:center; flex-wrap:wrap;">
+      <a href="/subscriptions/list" style="display:inline-block; background:#2E7D32; color:#fff; padding:14px 28px; border-radius:12px; text-decoration:none; font-weight:700;">🔑 View My Subscriptions</a>
+      <a href="/home" style="display:inline-block; background:#fff; border:1.5px solid #c8e6c9; color:#2E7D32; padding:14px 28px; border-radius:12px; text-decoration:none; font-weight:700;">← Back to Home</a>
+    </div>
+    
+    <p style="margin-top:25px; font-size:12px; color:#888;">Need help? WhatsApp us: <a href="https://wa.me/263773000000?text=Help with {{ docname }}" style="color:#2E7D32; font-weight:700;">Chat on WhatsApp</a></p>
+
+  {% else %}
+    <div style="font-size:60px;">⚠️</div>
+    <h2 style="color:#e65100;">Payment {{ status }}</h2>
+    <p>Reference: {{ docname }}</p>
+    <div style="margin-top:20px;">
+      <a href="javascript:history.back()" style="background:#2E7D32; color:#fff; padding:12px 24px; border-radius:10px; text-decoration:none; font-weight:700;">Try Again</a>
+      <a href="/contact" style="background:#fff; border:1px solid #ddd; padding:12px 24px; border-radius:10px; text-decoration:none; margin-left:8px;">Contact Support</a>
+    </div>
+  {% endif %}
+</div>
+{% endblock %}
