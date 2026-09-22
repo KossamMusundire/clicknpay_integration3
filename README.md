@@ -1,18 +1,11 @@
-# ClicknPay Integration
+# ClicknPay Integration for Frappe / ERPNext
+Generic app for ClicknPay – initiate, verify, auto-create Payment Entries.
 
-Generic Frappe app for ClicknPay via openapi.africa with ficalisation
+## Flow
+Customer → Frappe → ClicknPay → Callback → Payment Entry
 
-it works in erpnext
-
+## Features
+- Create orders, verify status, callback handling...
+ testing new branch
 ## Install
-bench --site [site] install-app clicknpay_integration
-bench --site [site] migrate
-
-#Handles ClicknPay payments + ZIMRA fiscalisation + Customer Portal.
-
-**Lead:** Kossam Musundire | **Junior:** Panashe
-**Provider:** ClicknPay (clicknpay.africa) | **Compliance:** ZIMRA FDMS via Marketplace App
-
----
-
-### Architecture
+bench get-app ...
