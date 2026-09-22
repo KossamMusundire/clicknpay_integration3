@@ -72,8 +72,7 @@ def initiate_payment(reference=None, subscription=None, email=None, phone=None, 
         phone = frappe.db.get_value("Customer", inv_doc.customer, "mobile_no") or "263771234567"
     curr = currency or inv_doc.currency or "USD"
     if not return_url:
-        return_url = f"{site_url}/api/method/clicknpay_integration.clicknpay_integration.api.clicknpay_callback?clientReference={invoice_name}"
-
+    return_url = f"{site_url}/api/method/clicknpay_integration.api.clicknpay_callback?clientReference={invoice_name}"
     products = [{"description": (i.description or i.item_name)[:100], "id": idx+1, "price": float(i.rate or 0), "productName": i.item_code, "quantity": int(i.qty or 1)} for idx, i in enumerate(inv_doc.items)]
     if not products:
         products = [{"description": (description or "Payment")[:100], "id": 1, "price": float(inv_doc.grand_total), "productName": "ITEM", "quantity": qty}]
