@@ -1,0 +1,119 @@
+{
+  "allow_rename": 1,
+  "autoname": "field:order_id",
+  "creation": "2026-09-10 00:00:00",
+  "doctype": "DocType",
+  "engine": "InnoDB",
+  "field_order": [
+    "order_id",
+    "reference",
+    "amount",
+    "status",
+    "payme_url",
+    "payment_entry",
+    "payment_request",
+    "sales_invoice",
+    "customer",
+    "customer_email",
+    "source_module",
+    "raw_response",
+    "creation_time"
+  ],
+  "fields": [
+    {
+      "fieldname": "order_id",
+      "fieldtype": "Data",
+      "label": "Order ID",
+      "unique": 1,
+      "reqd": 1,
+      "in_list_view": 1
+    },
+    {
+      "fieldname": "reference",
+      "fieldtype": "Data",
+      "label": "Invoice / Ref",
+      "in_list_view": 1
+    },
+    {
+      "fieldname": "amount",
+      "fieldtype": "Currency",
+      "label": "Amount",
+      "in_list_view": 1
+    },
+    {
+      "fieldname": "status",
+      "fieldtype": "Select",
+      "label": "Status",
+      "options": "PENDING\nSUCCESS\nPAID\nFAILED\nUNKNOWN\nCOMPLETED\nAPPROVED\nTOP-PAID",
+      "default": "PENDING",
+      "in_list_view": 1
+    },
+    {
+      "fieldname": "payme_url",
+      "fieldtype": "Data",
+      "label": "Pay Link",
+      "options": "URL"
+    },
+    {
+      "fieldname": "payment_entry",
+      "fieldtype": "Link",
+      "label": "Payment Entry",
+      "options": "Payment Entry"
+    },
+    {
+      "fieldname": "payment_request",
+      "fieldtype": "Link",
+      "label": "Payment Request",
+      "options": "Payment Request"
+    },
+    {
+      "fieldname": "sales_invoice",
+      "fieldtype": "Link",
+      "label": "Sales Invoice",
+      "options": "Sales Invoice"
+    },
+    {
+      "fieldname": "customer",
+      "fieldtype": "Link",
+      "label": "Customer",
+      "options": "Customer"
+    },
+    {
+      "fieldname": "customer_email",
+      "fieldtype": "Data",
+      "label": "Customer Email",
+      "options": "Email"
+    },
+    {
+      "fieldname": "source_module",
+      "fieldtype": "Data",
+      "label": "Source Module",
+      "default": "CyteERP Portal"
+    },
+    {
+      "fieldname": "raw_response",
+      "fieldtype": "Long Text",
+      "label": "Raw Response"
+    },
+    {
+      "fieldname": "creation_time",
+      "fieldtype": "Datetime",
+      "label": "Time",
+      "default": "Now"
+    }
+  ],
+  "istable": 0,
+  "issingle": 0,
+  "is_submittable": 0,
+  "module": "ClicknPay Integration",
+  "name": "ClicknPay Transaction Log",
+  "permissions": [
+    {
+      "role": "System Manager",
+      "read": 1,
+      "write": 1,
+      "create": 1,
+      "delete": 1
+    }
+  ]
+}
