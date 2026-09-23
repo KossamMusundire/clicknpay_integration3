@@ -1,0 +1,14 @@
+{% extends "templates/web.html" %}
+{% block title %}Payment Failed{% endblock %}
+{% block page_content %}
+<div style="text-align:center; padding:60px 20px; max-width:700px; margin:0 auto;">
+  <div style="font-size:80px;">❌</div>
+  <h1 style="color:#c62828; font-weight:800;">Payment Failed</h1>
+  <p>Invoice <b>{{ docname }}</b> - Status: {{ status }}</p>
+  <p style="color:#666;">No payment was recorded. Please try again.</p>
+  <div style="margin-top:30px;">
+    <a href="/api/method/clicknpay_integration.api.pay_invoice?invoice_name={{ docname }}" style="background:#2E7D32; color:#fff; padding:14px 28px; border-radius:12px; text-decoration:none; font-weight:700;">🔄 Try Again</a>
+    <a href="/" style="background:#fff; border:1px solid #ddd; padding:14px 28px; border-radius:12px; margin-left:8px; text-decoration:none;">Home</a>
+  </div>
+</div>
+{% endblock %}
