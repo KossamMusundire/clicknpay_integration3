@@ -69,7 +69,6 @@ def initiate_payment(reference=None, subscription=None, email=None, phone=None, 
             "productName": i.item_code,
             "quantity": int(i.qty or 1)
         })
-
     if not products:
         products = [{
             "description": (description or "Payment")[:100],
@@ -133,18 +132,30 @@ def clicknpay_callback():
                 orig = frappe.session.user
                 frappe.set_user("Administrator")
                 frappe.flags.ignore_permissions = True
-                if not frappe.db.exists("Payment Entry", {"reference_no": ref}):
+
+                if not frappe.db.exists("Payment Entry", {"reference_no": ref, "docstatus": ["<", 2]}):
+                    mode_of_payment = "ClicknPay"
+                    # DYNAMIC - reads from your Mode of Payment doc you pasted
+                    paid_to = frappe.db.get_value("Mode of Payment Account", {"parent": mode_of_payment, "company": inv.company}, "default_account")
+                    if not paid_to:
+                        paid_to = frappe.db.get_value("Company", inv.company, "default_bank_account") or frappe.db.get_value("Company", inv.company, "default_cash_account")
+                    if not paid_to:
+                        paid_to = "GW Keys FBC USD - GW"
+
                     pe = frappe.get_doc({
                         "doctype": "Payment Entry",
+                        "company": inv.company,
                         "payment_type": "Receive",
                         "party_type": "Customer",
                         "party": inv.customer,
+                        "paid_from": inv.debit_to,
+                        "paid_to": paid_to,
                         "posting_date": today(),
-                        "paid_amount": inv.grand_total,
-                        "received_amount": inv.grand_total,
+                        "paid_amount": inv.outstanding_amount,
+                        "received_amount": inv.outstanding_amount,
                         "reference_no": ref,
                         "reference_date": today(),
-                        "mode_of_payment": "Cash",
+                        "mode_of_payment": mode_of_payment,
                         "references": [{
                             "reference_doctype": "Sales Invoice",
                             "reference_name": ref,
