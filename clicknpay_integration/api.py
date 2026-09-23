@@ -116,51 +116,48 @@ def check_status(reference):
 @frappe.whitelist(allow_guest=True)
 def clicknpay_callback():
     ref = (frappe.form_dict.get("clientReference") or frappe.form_dict.get("reference") or "UNKNOWN").strip()
-    status_val = "SUCCESS"
+    
     try:
-        s = check_status(ref) if ref!= "UNKNOWN" else {}
-        if isinstance(s, list) and s:
-            s = s[0]
-        if isinstance(s, dict):
-            status_val = (s.get("status") or s.get("paymentStatus") or "SUCCESS").upper()
-    except Exception:
-        status_val = "SUCCESS"
-
-    try:
-        if ref!= "UNKNOWN" and frappe.db.exists("Sales Invoice", ref):
+        if ref != "UNKNOWN" and frappe.db.exists("Sales Invoice", ref):
             inv = frappe.get_doc("Sales Invoice", ref)
             if inv.docstatus == 1 and inv.outstanding_amount > 0:
-                orig = frappe.session.user
                 frappe.set_user("Administrator")
                 frappe.flags.ignore_permissions = True
-                if not frappe.db.exists("Payment Entry", {"reference_no": ref}):
-                    pe = frappe.get_doc({
-                        "doctype": "Payment Entry",
-                        "payment_type": "Receive",
-                        "party_type": "Customer",
-                        "party": inv.customer,
-                        "posting_date": today(),
-                        "paid_amount": inv.grand_total,
-                        "received_amount": inv.grand_total,
-                        "reference_no": ref,
-                        "reference_date": today(),
-                        "mode_of_payment": "Cash",
-                        "references": [{
-                            "reference_doctype": "Sales Invoice",
-                            "reference_name": ref,
-                            "allocated_amount": inv.outstanding_amount
-                        }]
+                
+                if not frappe.db.exists("Payment Entry", {"reference_no": ref, "docstatus": ["<", 2]}):
+                    pe = frappe.new_doc("Payment Entry")
+                    pe.company = inv.company
+                    pe.payment_type = "Receive"
+                    pe.party_type = "Customer"
+                    pe.party = inv.customer
+                    pe.paid_from = inv.debit_to
+                    pe.paid_to = "GW Keys FBC USD - GW"
+                    pe.mode_of_payment = "ClicknPay"
+                    pe.posting_date = today()
+                    pe.paid_amount = inv.outstanding_amount
+                    pe.received_amount = inv.outstanding_amount
+                    
+                    # FIX FOR YOUR ERROR
+                    pe.source_exchange_rate = 1
+                    pe.target_exchange_rate = 1
+                    pe.paid_from_account_currency = inv.currency
+                    pe.paid_to_account_currency = inv.currency
+                    
+                    pe.reference_no = ref
+                    pe.reference_date = today()
+                    pe.append("references", {
+                        "reference_doctype": "Sales Invoice",
+                        "reference_name": ref,
+                        "allocated_amount": inv.outstanding_amount
                     })
                     pe.insert(ignore_permissions=True)
                     pe.submit()
                     frappe.db.commit()
-                frappe.set_user(orig)
-    except Exception:
-        frappe.log_error(title="ClicknPay PE {0}".format(ref), message=frappe.get_traceback())
+    except Exception as e:
+        frappe.log_error(title="ClicknPay PE {0} FAIL {1}".format(ref, str(e)[:100]), message=frappe.get_traceback())
 
     frappe.local.response["type"] = "redirect"
-    frappe.local.response["location"] = "{0}/payment-success?doctype=Sales Invoice&docname={1}&invoice={1}&status={2}&gateway=clicknpay".format(get_url(), ref, status_val)
-
+    frappe.local.response["location"] = "{0}/payment-success?doctype=Sales Invoice&docname={1}&invoice={1}&status=SUCCESS&gateway=clicknpay".format(get_url(), ref)
 @frappe.whitelist(allow_guest=True)
 def pay_invoice(invoice_name=None):
     invoice_name = invoice_name or frappe.form_dict.get("invoice_name") or frappe.form_dict.get("reference") or frappe.form_dict.get("clientReference")
