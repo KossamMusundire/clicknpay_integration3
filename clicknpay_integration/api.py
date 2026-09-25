@@ -24,94 +24,108 @@ def get_settings():
     }
 
 @frappe.whitelist(allow_guest=True)
-def initiate_payment(reference=None, subscription=None, email=None, phone=None, plan_name=None, qty=1, description=None, return_url=None, currency=None):
-    reference = (reference or "").strip()
-    subscription_arg = (subscription or "").strip()
-    email = (email or "").strip()
-    phone = (phone or "").strip()
+def initiate_payment(reference=None, subscription=None, email=None, phone=None, plan_name=None, qty=1, description=None, return_url=None, currency=None, payment_request=None, invoice_name=None, **kwargs):
+    """
+    Works for both:
+    - reference = ACC-SINV-2026-00026 (Invoice)
+    - reference = ACC-PRQ-2026-00008 (Payment Request)
+    - payment_request = ACC-PRQ-2026-00008 (from ClicknPay Settings.get_payment_url)
+    """
+    # Accept all possible names ERPNext might send
+    reference = (reference or invoice_name or kwargs.get("reference_name") or kwargs.get("invoice_name") or "").strip()
+    payment_request = (payment_request or kwargs.get("payment_request_name") or kwargs.get("pr_name") or "").strip()
+    email = (email or kwargs.get("contact_email") or "").strip()
+    phone = (phone or kwargs.get("contact_phone") or "").strip()
     qty = cint(qty or 1) or 1
-    invoice_name = None
+
     site_url = get_url()
     settings = get_settings()
+    pr_doc = None
+    inv_name = None
 
+    # If reference is a Payment Request, resolve to invoice
     if reference and frappe.db.exists("Payment Request", reference):
-        reference = frappe.db.get_value("Payment Request", reference, "reference_name") or reference
+        pr_doc = frappe.get_doc("Payment Request", reference)
+        inv_name = pr_doc.reference_name
+        payment_request = pr_doc.name
+    elif payment_request and frappe.db.exists("Payment Request", payment_request):
+        pr_doc = frappe.get_doc("Payment Request", payment_request)
+        inv_name = pr_doc.reference_name or reference
+        reference = inv_name
 
-    if subscription_arg and frappe.db.exists("Subscription", subscription_arg):
-        outs = frappe.get_all("Sales Invoice", filters={"subscription": subscription_arg, "docstatus": 1, "outstanding_amount": [">", 0]}, limit=1, order_by="creation desc")
+    # If still not invoice, check subscription
+    if not inv_name and kwargs.get("subscription") and frappe.db.exists("Subscription", kwargs.get("subscription")):
+        outs = frappe.get_all("Sales Invoice", filters={"subscription": kwargs.get("subscription"), "docstatus": 1, "outstanding_amount": [">", 0]}, limit=1, order_by="creation desc")
         if outs:
-            invoice_name = outs[0].name
+            inv_name = outs[0].name
 
-    if not invoice_name and reference and frappe.db.exists("Sales Invoice", reference):
-        invoice_name = reference
+    # Direct invoice
+    if not inv_name and reference and frappe.db.exists("Sales Invoice", reference):
+        inv_name = reference
 
+    # Email search fallback
     search_email = email or (reference if "@" in reference else "")
-    if not invoice_name and search_email:
+    if not inv_name and search_email:
         inv = frappe.get_all("Sales Invoice", filters={"contact_email": search_email, "docstatus": ["!=", 2]}, limit=1, order_by="creation desc")
         if inv:
-            invoice_name = inv[0].name
+            inv_name = inv[0].name
 
-    if not invoice_name:
-        frappe.throw("Invoice not found Ref: {0}".format(reference))
+    if not inv_name:
+        frappe.throw(f"Invoice not found Ref: {reference} / PRQ: {payment_request}")
 
-    inv_doc = frappe.get_doc("Sales Invoice", invoice_name)
+    inv_doc = frappe.get_doc("Sales Invoice", inv_name)
     curr = currency or inv_doc.currency or "USD"
+    grand = float(inv_doc.grand_total or 0)
 
     if not return_url:
-        return_url = "{0}/api/method/clicknpay_integration.api.clicknpay_callback?clientReference={1}".format(site_url, invoice_name)
+        return_url = f"{site_url}/api/method/clicknpay_integration.api.clicknpay_callback?clientReference={inv_name}"
 
-    # --- FIXED PRODUCTS BUILDER WITH TAXES ---
+    # --- BUILD PRODUCTS WITH TAX INCLUDED (FIX FOR YOUR 100 vs 115.50 BUG) ---
     products = []
-    total_products_amount = 0
+    # Simplest & 100% accurate: send single product = grand_total
+    # This guarantees gateway = invoice total incl. VAT
+    # If you want itemized + tax lines, uncomment the block below
+    products = [{
+        "description": (description or f"Payment for {inv_name} - {inv_doc.customer}")[:100],
+        "id": 1,
+        "price": grand,
+        "productName": inv_name[:50],
+        "quantity": 1
+    }]
 
+    """
+    # ALTERNATIVE - itemized with tax lines (use if ClicknPay needs breakdown):
+    total = 0
     for idx, i in enumerate(inv_doc.items):
-        # Use net rate for items
-        price = float(i.rate or 0)
-        q = int(i.qty or 1)
         products.append({
             "description": (i.description or i.item_name or "")[:100],
-            "id": idx + 1,
-            "price": price,
+            "id": idx+1,
+            "price": float(i.rate or 0),
             "productName": (i.item_code or "ITEM")[:50],
-            "quantity": q
+            "quantity": int(i.qty or 1)
         })
-        total_products_amount += price * q
-
-    # Add taxes as separate product lines so gateway total = grand_total
-    tax_offset = len(products)
-    if inv_doc.taxes:
-        for t_idx, t in enumerate(inv_doc.taxes):
-            tax_amt = float(t.tax_amount or 0)
-            if tax_amt!= 0:
-                products.append({
-                    "description": (t.description or "Tax")[:100],
-                    "id": tax_offset + t_idx + 1,
-                    "price": tax_amt,
-                    "productName": "TAX-{0}".format(t_idx+1),
-                    "quantity": 1
-                })
-                total_products_amount += tax_amt
-
-    # Safety: If rounding diff still exists, force to grand_total with single line
-    # This guarantees what user sees on your invoice = what gateway charges
-    grand = float(inv_doc.grand_total or 0)
-    if abs(total_products_amount - grand) > 0.01 or not products:
-        # Fallback: send single line = grand_total - this is 100% accurate
-        products = [{
-            "description": (description or "Payment for {0} - Incl. Tax".format(invoice_name))[:100],
-            "id": 1,
-            "price": grand,
-            "productName": invoice_name,
-            "quantity": 1
-        }]
+        total += float(i.rate or 0) * int(i.qty or 1)
+    for t_idx, t in enumerate(inv_doc.taxes):
+        if float(t.tax_amount or 0)!= 0:
+            products.append({
+                "description": (t.description or "Tax")[:100],
+                "id": len(products)+1,
+                "price": float(t.tax_amount),
+                "productName": f"TAX-{t_idx+1}",
+                "quantity": 1
+            })
+            total += float(t.tax_amount)
+    if abs(total - grand) > 0.01:
+        products = [{"description": f"Payment for {inv_name}", "id": 1, "price": grand, "productName": inv_name, "quantity": 1}]
+    """
 
     payload = {
         "channel": "AUTOMATED",
-        "clientReference": invoice_name,
+        "clientReference": inv_name,
         "currency": curr,
         "customerCharged": True,
         "customerPhoneNumber": (phone.replace(" ", "") or "263771234567")[:15],
-        "description": (description or "Payment x{0} - {1}".format(len(inv_doc.items), invoice_name))[:200],
+        "description": (description or f"Payment x1 - {inv_name}")[:200],
         "multiplePayments": False,
         "orderYpe": "DYNAMIC",
         "productsList": products,
@@ -125,27 +139,22 @@ def initiate_payment(reference=None, subscription=None, email=None, phone=None, 
     except Exception:
         j = {"raw_text": resp.text, "status_code": resp.status_code}
 
-    pay_url = j.get("paymeURL") or j.get("paymeUrl") or j.get("paymentUrl")
+    pay_url = j.get("paymeURL") or j.get("paymeUrl") or j.get("paymentUrl") or j.get("payUrl")
+
+    if pay_url and pr_doc:
+        frappe.db.set_value("Payment Request", pr_doc.name, "payment_url", pay_url)
 
     if pay_url:
-        # Also update linked Payment Request with correct URL and amount
-        pr_name = frappe.db.get_value("Payment Request", {"reference_name": invoice_name, "status": ["in", ["Requested", "Initiated"]]}, "name")
-        if pr_name:
-            frappe.db.set_value("Payment Request", pr_name, {
-                "payment_url": pay_url,
-                "grand_total": grand, # force correct total
-                "outstanding_amount": grand
-            })
-            frappe.db.commit()
-        return {"status": "success", "redirect_url": pay_url, "invoice": invoice_name, "raw": j, "sent_amount": grand}
-    return {"status": "error", "raw": j, "payload_sent": payload}
+        return {"status": "success", "redirect_url": pay_url, "payment_url": pay_url, "invoice": inv_name, "raw": j, "amount": grand}
 
-#... keep check_status, clicknpay_callback, pay_invoice same as yours...
+    frappe.log_error(title=f"ClicknPay Fail {inv_name}", message=str(j) + "\n" + str(payload))
+    return {"status": "error", "raw": j, "payload": payload}
+
 @frappe.whitelist(allow_guest=True)
 def check_status(reference):
     settings = get_settings()
     try:
-        r = requests.get("{0}/{1}".format(settings["status_url"], reference), timeout=15)
+        r = requests.get(f"{settings['status_url']}/{reference}", timeout=15)
         data = r.json()
         if isinstance(data, list) and data:
             return data[0]
@@ -159,12 +168,12 @@ def clicknpay_callback():
     status_val = "SUCCESS"
     try:
         s = check_status(ref) if ref!= "UNKNOWN" else {}
-        if isinstance(s, list) and s:
-            s = s[0]
+        if isinstance(s, list) and s: s = s[0]
         if isinstance(s, dict):
             status_val = (s.get("status") or s.get("paymentStatus") or "SUCCESS").upper()
     except Exception:
         status_val = "SUCCESS"
+
     try:
         if ref!= "UNKNOWN" and frappe.db.exists("Sales Invoice", ref):
             inv = frappe.get_doc("Sales Invoice", ref)
@@ -178,7 +187,7 @@ def clicknpay_callback():
                     if not paid_to:
                         paid_to = frappe.db.get_value("Company", inv.company, "default_bank_account") or frappe.db.get_value("Company", inv.company, "default_cash_account")
                     if not paid_to:
-                        paid_to = "GW Keys FBC USD - GW"
+                        paid_to = "Bank Account - CSPL"
                     pe = frappe.get_doc({
                         "doctype": "Payment Entry", "company": inv.company, "payment_type": "Receive",
                         "party_type": "Customer", "party": inv.customer, "paid_from": inv.debit_to, "paid_to": paid_to,
@@ -191,9 +200,10 @@ def clicknpay_callback():
                     frappe.db.commit()
                 frappe.set_user(orig)
     except Exception:
-        frappe.log_error(title="ClicknPay PE {0}".format(ref), message=frappe.get_traceback())
+        frappe.log_error(title=f"ClicknPay PE {ref}", message=frappe.get_traceback())
+
     frappe.local.response["type"] = "redirect"
-    frappe.local.response["location"] = "{0}/payment-success?doctype=Sales Invoice&docname={1}&invoice={1}&status={2}&gateway=clicknpay".format(get_url(), ref, status_val)
+    frappe.local.response["location"] = f"{get_url()}/payment-success?doctype=Sales Invoice&docname={ref}&invoice={ref}&status={status_val}&gateway=clicknpay"
 
 @frappe.whitelist(allow_guest=True)
 def pay_invoice(invoice_name=None):
@@ -205,4 +215,4 @@ def pay_invoice(invoice_name=None):
         frappe.local.response["type"] = "redirect"
         frappe.local.response["location"] = result["redirect_url"]
     else:
-        frappe.throw("Payment init failed: {0}".format(result.get("raw")))
+        frappe.throw(f"Payment init failed: {result.get('raw')}")
